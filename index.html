@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ModelShift - 机型伪装大师</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563EB',
+                        'dark-surface': '#18181b',
+                        'dark-card': '#27272a',
+                        'xiaomi-orange': '#FF6900',
+                        'oppo-green': '#107B41', 
+                        'custom-purple': '#9333ea',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Libraries -->
+    <script src="https://unpkg.com/piexifjs@1.0.6/piexif.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+    
+    <!-- Leaflet Map CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Icons & Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        :root { --surface-color: #F8FAFC; --on-surface: #0F172A; }
+        body { font-family: 'Roboto', 'Noto Sans SC', sans-serif; background-color: var(--surface-color); color: var(--on-surface); transition: background-color 0.3s, color 0.3s; }
+        .dark body { --surface-color: #09090b; --on-surface: #f4f4f5; }
+
+        /* Styles */
+        .model-card { transition: all 0.2s cubic-bezier(0.2, 0.0, 0, 1.0); }
+        .model-card.selected-xiaomi { border: 2px solid #FF6900; background-color: #FFF7ED; }
+        .dark .model-card.selected-xiaomi { background-color: #431407; border-color: #FB923C; }
+        .model-card.selected-apple { border: 2px solid #2563EB; background-color: #EFF6FF; }
+        .dark .model-card.selected-apple { background-color: #172554; border-color: #60A5FA; }
+        .model-card.selected-oppo { border: 2px solid #107B41; background-color: #F0FDF4; }
+        .dark .model-card.selected-oppo { background-color: #052e16; border-color: #22c55e; }
+
+        .fab-btn { box-shadow: 0px 8px 24px -4px rgba(0, 0, 0, 0.2); transition: all 0.3s; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .fab-btn:hover { transform: scale(1.05); box-shadow: 0px 12px 32px -4px rgba(0, 0, 0, 0.25); }
+        .fab-btn:disabled { background-color: rgba(148, 163, 184, 0.8) !important; cursor: not-allowed; transform: none; box-shadow: none; backdrop-filter: none; }
+
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid currentColor; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        input[type="file"] { display: none; }
+        .processing-overlay { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(4px); }
+        .dark .processing-overlay { background: rgba(0, 0, 0, 0.85); }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #4b5563; }
+
+        .brand-tab { transition: all 0.3s; border-bottom: 2px solid transparent; }
+        .brand-tab.active-xiaomi { color: #FF6900; border-bottom-color: #FF6900; }
+        .dark .brand-tab.active-xiaomi { color: #FB923C; border-bottom-color: #FB923C; }
+        .brand-tab.active-apple { color: #2563EB; border-bottom-color: #2563EB; }
+        .dark .brand-tab.active-apple { color: #60A5FA; border-bottom-color: #60A5FA; }
+        .brand-tab.active-oppo { color: #107B41; border-bottom-color: #107B41; }
+        .dark .brand-tab.active-oppo { color: #22c55e; border-bottom-color: #22c55e; }
+        .brand-tab.active-custom { color: #9333ea; border-bottom-color: #9333ea; }
+        .dark .brand-tab.active-custom { color: #c084fc; border-bottom-color: #c084fc; }
+
+        .meta-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #64748B; }
+        .dark .meta-item { color: #94A3B8; }
+        
+        .meta-input { width: 100%; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; color: #0F172A; font-weight: 500; transition: all 0.2s; font-size: 0.9rem; }
+        .dark .meta-input { color: #F1F5F9; }
+        .meta-input:hover { background-color: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); }
+        .dark .meta-input:hover { background-color: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); }
+        .meta-input:focus { outline: none; background-color: white; border-color: #2563EB; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1); }
+        .dark .meta-input:focus { background-color: #27272a; border-color: #60A5FA; }
+
+        .icon-btn { padding: 4px; border-radius: 6px; cursor: pointer; color: #64748B; transition: all 0.2s; }
+        .icon-btn:hover { background-color: rgba(0,0,0,0.05); color: #2563EB; }
+        .dark .icon-btn { color: #94A3B8; }
+        .dark .icon-btn:hover { background-color: rgba(255,255,255,0.1); color: #60A5FA; }
+
+        .custom-input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #e2e8f0; background-color: #f8fafc; color: #0f172a; transition: all 0.2s; }
+        .dark .custom-input { background-color: #18181b; border-color: #3f3f46; color: #f4f4f5; }
+        .custom-input:focus { outline: none; border-color: #9333ea; box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.1); }
+        .dark .custom-input:focus { border-color: #c084fc; box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.1); }
+
+        /* Map Modal */
+        #mapModal { z-index: 9999; }
+        #leafletMap { height: 400px; width: 100%; border-radius: 12px; }
+    </style>
+</head>
+<body class="min-h-screen pb-32 dark:bg-zinc-950 dark:text-zinc-100 transition-colors duration-300">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-b border-gray-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between transition-colors duration-300">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-900 dark:bg-white text-white dark:text-black shadow-sm">
+                <i data-lucide="aperture" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-gray-900 dark:text-white leading-none">ModelShift</h1>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium tracking-wide">机型伪装大师</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="themeToggle" class="p-2.5 rounded-full bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-gray-200 transition-colors">
+                <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+                <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-3xl mx-auto px-4 pt-8">
+        
+        <!-- Upload Section -->
+        <div id="uploadZone" class="group relative w-full aspect-[16/9] md:aspect-[21/9] rounded-[24px] bg-white dark:bg-zinc-900 border-2 border-dashed border-gray-300 dark:border-zinc-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all cursor-pointer flex flex-col items-center justify-center overflow-hidden mb-6 shadow-sm hover:shadow-md">
+            <div id="placeholderState" class="flex flex-col items-center text-center p-6 transition-opacity duration-300">
+                <div class="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform">
+                    <i data-lucide="image-plus" class="w-8 h-8 text-blue-600 dark:text-blue-400"></i>
+                </div>
+                <h2 class="text-xl font-bold text-gray-800 dark:text-gray-200">点击上传照片</h2>
+                <div class="flex gap-2 mt-3 justify-center">
+                    <span class="text-xs bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 px-2 py-1 rounded-md font-mono">JPG/JPEG</span>
+                    <span class="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 font-bold px-2 py-1 rounded-md font-mono">HEIC</span>
+                    <span class="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold px-2 py-1 rounded-md font-mono">PNG</span>
+                </div>
+                <p class="text-gray-400 dark:text-gray-500 mt-3 text-sm">保留完整拍摄参数与 GPS 信息</p>
+            </div>
+            
+            <img id="imagePreview" class="absolute inset-0 w-full h-full object-contain bg-black hidden z-10" />
+            <div id="heicLoader" class="absolute inset-0 z-30 processing-overlay flex flex-col items-center justify-center hidden">
+                <div class="loader mb-3 text-blue-600"></div>
+                <p class="text-gray-800 dark:text-gray-200 font-medium">正在读取 EXIF 并转换...</p>
+                <p class="text-gray-500 dark:text-gray-400 text-xs mt-1">这可能需要几秒钟</p>
+            </div>
+            <div id="changeOverlay" class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity z-20 flex items-center justify-center hidden pointer-events-none">
+                 <span class="px-4 py-2 bg-white/20 backdrop-blur-md rounded-full text-white font-medium border border-white/30 text-sm">更换图片</span>
+            </div>
+            <input type="file" id="fileInput" accept="image/jpeg, image/jpg, image/heic, image/heif, image/png" />
+        </div>
+
+        <!-- Metadata & HDR Toggle -->
+        <div class="flex flex-col gap-4 mb-8">
+            <!-- Metadata Panel -->
+            <div id="metaPanel" class="bg-white dark:bg-zinc-900 rounded-[20px] p-5 shadow-sm border border-gray-100 dark:border-zinc-800 hidden animate-fade-in">
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-2">
+                        <i data-lucide="info" class="w-3 h-3"></i> 拍摄信息 (可编辑)
+                    </h4>
+                    <button onclick="randomizeExif()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-medium transition-colors">
+                        <i data-lucide="dices" class="w-3.5 h-3.5"></i> 随机参数
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- Datalists Definition -->
+                    <datalist id="apertureList"><option value="f/1.4"><option value="f/1.8"><option value="f/2.0"><option value="f/2.8"><option value="f/4.0"><option value="f/5.6"><option value="f/8.0"><option value="f/11"></datalist>
+                    <datalist id="shutterList"><option value="1/8000s"><option value="1/4000s"><option value="1/2000s"><option value="1/1000s"><option value="1/500s"><option value="1/250s"><option value="1/125s"><option value="1/60s"><option value="1/30s"><option value="1s"></datalist>
+                    <datalist id="isoList"><option value="50"><option value="100"><option value="200"><option value="400"><option value="800"><option value="1600"><option value="3200"><option value="6400"></datalist>
+                    <datalist id="focalList"><option value="14mm"><option value="24mm"><option value="28mm"><option value="35mm"><option value="50mm"><option value="85mm"><option value="135mm"><option value="200mm"></datalist>
+
+                    <div class="meta-item relative group">
+                        <i data-lucide="camera" class="w-4 h-4 text-gray-400"></i>
+                        <span id="metaModel" class="meta-value truncate px-1.5 text-gray-500 cursor-default text-xs" title="原始机型">--</span>
+                    </div>
+                    <div class="meta-item">
+                        <i data-lucide="aperture" class="w-4 h-4 text-gray-400"></i>
+                        <input type="text" id="inputAperture" class="meta-input" placeholder="f/1.8" list="apertureList">
+                    </div>
+                    <div class="meta-item">
+                        <i data-lucide="timer" class="w-4 h-4 text-gray-400"></i>
+                        <input type="text" id="inputShutter" class="meta-input" placeholder="1/100s" list="shutterList">
+                    </div>
+                    <div class="meta-item">
+                        <i data-lucide="iso" class="w-4 h-4 text-gray-400"></i>
+                        <input type="text" id="inputISO" class="meta-input" placeholder="100" list="isoList">
+                    </div>
+                    <div class="meta-item">
+                        <i data-lucide="focus" class="w-4 h-4 text-gray-400"></i>
+                        <input type="text" id="inputFocal" class="meta-input" placeholder="24mm" list="focalList">
+                    </div>
+                    
+                    <!-- Date Picker Integration (Fixed) -->
+                    <div class="meta-item col-span-2 md:col-span-1 relative group/date">
+                        <i data-lucide="calendar" class="w-4 h-4 text-gray-400"></i>
+                        <input type="text" id="inputDate" class="meta-input text-xs pr-8" placeholder="YYYY:MM:DD HH:MM:SS">
+                        
+                        <!-- Invisible native picker overlay -->
+                        <div class="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6">
+                            <div class="icon-btn w-full h-full flex items-center justify-center pointer-events-none">
+                                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                            </div>
+                            <input type="datetime-local" id="hiddenDatePicker" 
+                                   class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" 
+                                   onchange="syncDateFromPicker()">
+                        </div>
+                    </div>
+
+                    <!-- Map Picker Integration -->
+                    <div class="meta-item col-span-2 relative">
+                        <i data-lucide="map-pin" class="w-4 h-4 text-gray-400"></i>
+                        <input type="text" id="inputGPS" class="meta-input text-xs" placeholder="纬度, 经度">
+                        <button onclick="openMapModal()" class="icon-btn absolute right-1">
+                            <i data-lucide="map" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HDR Toggle -->
+            <div class="bg-white dark:bg-zinc-900 rounded-[20px] p-4 shadow-sm border border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-full text-purple-600 dark:text-purple-400">
+                        <i data-lucide="sun" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-gray-800 dark:text-gray-200">保留 HDR 信息 (JPEG)</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">防止 Gain Map 丢失，适合 Apple Ultra HDR 照片</p>
+                    </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="hdrToggle" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                </label>
+            </div>
+        </div>
+
+        <!-- Model Selection -->
+        <div id="selectionContainer" class="bg-white dark:bg-zinc-900 rounded-[24px] shadow-sm border border-gray-100 dark:border-zinc-800 p-6 opacity-50 pointer-events-none transition-opacity duration-300">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                    <i data-lucide="smartphone" class="w-5 h-5 text-gray-500"></i> 选择伪装目标
+                </h3>
+                <div class="flex items-center gap-4 w-full md:w-auto border-b md:border-b-0 border-gray-100 dark:border-zinc-800 pb-2 md:pb-0 overflow-x-auto custom-scrollbar">
+                    <button onclick="switchTab('xiaomi')" id="tabXiaomi" class="brand-tab active-xiaomi whitespace-nowrap flex-none text-center pb-2 md:pb-1 px-2 font-bold text-base flex items-center justify-center gap-2">Xiaomi</button>
+                    <button onclick="switchTab('apple')" id="tabApple" class="brand-tab text-gray-400 whitespace-nowrap flex-none text-center pb-2 md:pb-1 px-2 font-bold text-base flex items-center justify-center gap-2">Apple</button>
+                    <button onclick="switchTab('oppo')" id="tabOppo" class="brand-tab text-gray-400 whitespace-nowrap flex-none text-center pb-2 md:pb-1 px-2 font-bold text-base flex items-center justify-center gap-2">OPPO</button>
+                    <button onclick="switchTab('custom')" id="tabCustom" class="brand-tab text-gray-400 whitespace-nowrap flex-none text-center pb-2 md:pb-1 px-2 font-bold text-base flex items-center justify-center gap-2">自定义</button>
+                </div>
+            </div>
+
+            <div class="relative min-h-[300px]">
+                <div id="xiaomiPanel" class="space-y-8 animate-fade-in">
+                    <div class="flex items-start gap-3 bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 dark:border-orange-900/30"><i data-lucide="zap" class="w-5 h-5 text-orange-600 mt-0.5"></i><div><p class="text-sm font-bold text-orange-800 dark:text-orange-300">官方命名模式</p><p class="text-xs text-orange-600 dark:text-orange-400 mt-0.5">使用如 "Xiaomi 17 Ultra by Leica" 的完整名称，完美适配 HyperOS 相册。</p></div></div>
+                    <div><div class="flex items-center gap-2 mb-3"><span class="px-2 py-0.5 rounded bg-gray-900 dark:bg-white text-white dark:text-black text-[10px] font-bold tracking-widest">NEW</span><h4 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Xiaomi 17 Series</h4></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="xiaomi17Container"></div></div>
+                    <div><h4 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Xiaomi 15 Series</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="xiaomi15Container"></div></div>
+                    <div><h4 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Xiaomi 14 Series</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="xiaomi14Container"></div></div>
+                </div>
+                <div id="applePanel" class="space-y-8 hidden animate-fade-in"><div id="appleList" class="space-y-8"></div></div>
+                <div id="oppoPanel" class="space-y-8 hidden animate-fade-in">
+                    <div class="flex items-start gap-3 bg-green-50 dark:bg-green-900/10 p-4 rounded-xl border border-green-100 dark:border-green-900/30"><i data-lucide="leaf" class="w-5 h-5 text-[#107B41] mt-0.5"></i><div><p class="text-sm font-bold text-green-800 dark:text-green-300">OPPO 机型库</p><p class="text-xs text-green-600 dark:text-green-400 mt-0.5">包含 Reno, Find X 以及 K 系列全系机型。</p></div></div>
+                    <div id="oppoList" class="space-y-8"></div>
+                </div>
+                <div id="customPanel" class="space-y-6 hidden animate-fade-in">
+                    <div class="flex items-start gap-3 bg-purple-50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30 mb-6"><i data-lucide="edit-3" class="w-5 h-5 text-purple-600 mt-0.5"></i><div><p class="text-sm font-bold text-purple-800 dark:text-purple-300">自定义机型</p><p class="text-xs text-purple-600 dark:text-purple-400 mt-0.5">手动输入任意厂商和机型，尽情发挥您的创意。</p></div></div>
+                    <div class="grid gap-6"><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">设备厂商 (Make)</label><input type="text" id="customMakeInput" placeholder="例如: Sony, Fujifilm, Leica..." class="custom-input"><p class="text-xs text-gray-400 mt-1">EXIF 标准厂商名称</p></div><div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">设备型号 (Model)</label><input type="text" id="customModelInput" placeholder="例如: ILCE-7RM5, X100VI..." class="custom-input"><p class="text-xs text-gray-400 mt-1">具体的相机型号名称</p></div></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- FAB -->
+    <div class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-4">
+        <div id="toast" class="bg-gray-900 dark:bg-white text-white dark:text-black px-6 py-3 rounded-2xl shadow-xl transform translate-y-32 opacity-0 transition-all duration-300 flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-5 h-5 text-green-400 dark:text-green-600"></i>
+            <span id="toastMsg">处理完成</span>
+        </div>
+        <button id="downloadBtn" class="fab-btn bg-blue-600/90 text-white rounded-2xl px-8 py-4 flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            <i data-lucide="save" class="w-6 h-6"></i>
+            <div class="text-left"><div class="font-bold text-base leading-none">保存照片</div><div class="text-[10px] opacity-80 font-medium tracking-wide mt-1">修改机型并下载</div></div>
+            <div id="processingLoader" class="loader hidden ml-2 border-white border-t-transparent w-5 h-5 border-2"></div>
+        </button>
+    </div>
+
+    <!-- Map Modal -->
+    <div id="mapModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-gray-100 dark:border-zinc-800 flex flex-col">
+            <div class="p-4 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
+                <h3 class="font-bold text-lg dark:text-white">选择位置</h3>
+                <button onclick="closeMapModal()" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-4">
+                <div id="leafletMap"></div>
+                <p class="text-xs text-gray-500 mt-2 text-center">点击地图选择位置，或拖动标记</p>
+            </div>
+            <div class="p-4 bg-gray-50 dark:bg-zinc-800/50 flex justify-end">
+                <button onclick="confirmMapLocation()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">确认位置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const themeToggleBtn = document.getElementById('themeToggle');
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) { document.documentElement.classList.add('dark'); } else { document.documentElement.classList.remove('dark'); }
+        themeToggleBtn.addEventListener('click', () => { document.documentElement.classList.toggle('dark'); localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light'; });
+
+        // --- Data ---
+        const xiaomiData = { series17: [{ name: "Xiaomi 17", code: "Xiaomi 17" }, { name: "Xiaomi 17 Pro", code: "Xiaomi 17 Pro" }, { name: "Xiaomi 17 Pro Max", code: "Xiaomi 17 Pro Max" }, { name: "Xiaomi 17 Ultra", code: "Xiaomi 17 Ultra by Leica" }, { name: "Xiaomi 17 Ultra Leica", code: "Xiaomi 17 Ultra by Leica" }], series15: [{ name: "Xiaomi 15", code: "Xiaomi 15" }, { name: "Xiaomi 15 Pro", code: "Xiaomi 15 Pro" }, { name: "Xiaomi 15 Ultra", code: "Xiaomi 15 Ultra" }], series14: [{ name: "Xiaomi 14", code: "Xiaomi 14" }, { name: "Xiaomi 14 Pro", code: "Xiaomi 14 Pro" }, { name: "Xiaomi 14 Ultra", code: "Xiaomi 14 Ultra" }] };
+        const appleData = { "Series 17": ["iPhone 17", "iPhone 17 Pro", "iPhone 17 Pro Max"], "Series 16": ["iPhone 16", "iPhone 16 Pro", "iPhone 16 Pro Max"], "Series 15": ["iPhone 15", "iPhone 15 Pro", "iPhone 15 Pro Max"], "Series 14": ["iPhone 14", "iPhone 14 Pro", "iPhone 14 Pro Max"], "Series 13": ["iPhone 13", "iPhone 13 Pro"], "Series 12": ["iPhone 12"], "Classic": ["iPhone 11", "iPhone X", "iPhone 8"] };
+        const oppoData = { "Reno": ["Reno12 Pro", "Reno11 Pro", "Reno10 Pro+"], "Find X": ["Find X7 Ultra", "Find X6 Pro", "Find X5 Pro"], "K Series": ["K12", "K11"] };
+
+        let originalImageBuffer = null;
+        let originalFileName = "";
+        let selectedModelCode = null;
+        let selectedBrand = "Xiaomi";
+        let currentExifObj = null;
+        let mapInstance = null;
+        let mapMarker = null;
+        let selectedLat = null;
+        let selectedLng = null;
+
+        // --- Tabs ---
+        function switchTab(brand) {
+            const tabs = { xiaomi: document.getElementById('tabXiaomi'), apple: document.getElementById('tabApple'), oppo: document.getElementById('tabOppo'), custom: document.getElementById('tabCustom') };
+            const panels = { xiaomi: document.getElementById('xiaomiPanel'), apple: document.getElementById('applePanel'), oppo: document.getElementById('oppoPanel'), custom: document.getElementById('customPanel') };
+            const btn = document.getElementById('downloadBtn');
+
+            document.querySelectorAll('.model-card').forEach(c => {
+                c.classList.remove('selected-xiaomi', 'selected-apple', 'selected-oppo');
+                c.querySelector('.select-indicator').classList.remove('bg-orange-500', 'bg-blue-600', 'bg-[#107B41]', 'border-orange-500', 'border-blue-600', 'border-[#107B41]');
+                c.querySelector('.select-indicator').classList.add('border-gray-300', 'dark:border-zinc-600');
+                c.querySelector('.select-indicator div').classList.add('scale-0');
+            });
+            selectedModelCode = null;
+            btn.disabled = true;
+            btn.classList.remove('bg-blue-600/90', 'bg-orange-600/90', 'bg-[#107B41]/90', 'bg-purple-600/90');
+
+            Object.values(tabs).forEach(t => t.className = `brand-tab text-gray-400 whitespace-nowrap flex-none text-center pb-2 md:pb-1 px-2 font-bold text-base flex items-center justify-center gap-2 hover:text-gray-600 dark:hover:text-gray-300`);
+            Object.values(panels).forEach(p => p.classList.add('hidden'));
+
+            if (brand === 'xiaomi') { panels.xiaomi.classList.remove('hidden'); tabs.xiaomi.classList.add('active-xiaomi', 'text-gray-900', 'dark:text-white'); btn.classList.add('bg-orange-600/90'); selectedBrand = "Xiaomi"; }
+            else if (brand === 'apple') { panels.apple.classList.remove('hidden'); tabs.apple.classList.add('active-apple', 'text-gray-900', 'dark:text-white'); btn.classList.add('bg-blue-600/90'); selectedBrand = "Apple"; }
+            else if (brand === 'oppo') { panels.oppo.classList.remove('hidden'); tabs.oppo.classList.add('active-oppo', 'text-gray-900', 'dark:text-white'); btn.classList.add('bg-[#107B41]/90'); selectedBrand = "OPPO"; }
+            else if (brand === 'custom') { panels.custom.classList.remove('hidden'); tabs.custom.classList.add('active-custom', 'text-gray-900', 'dark:text-white'); btn.classList.add('bg-purple-600/90'); selectedBrand = "Custom"; checkCustomInputs(); }
+        }
+
+        function checkCustomInputs() {
+            if (selectedBrand !== 'Custom') return;
+            const make = document.getElementById('customMakeInput').value.trim();
+            const model = document.getElementById('customModelInput').value.trim();
+            document.getElementById('downloadBtn').disabled = !(originalImageBuffer && make && model);
+        }
+
+        // --- Render Functions ---
+        function renderXiaomiCards(k, id) { 
+            const c = document.getElementById(id); 
+            xiaomiData[k].forEach(d => {
+                const card = createCard(d.name, d.code, 'xiaomi');
+                c.appendChild(card);
+            }); 
+        }
+        
+        function renderAppleList() { 
+            const c = document.getElementById('appleList'); 
+            c.innerHTML = '';
+            Object.entries(appleData).forEach(([k,v]) => { 
+                const s = document.createElement('div');
+                s.innerHTML = `<h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 pl-1">${k}</h4>`;
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-2 sm:grid-cols-3 gap-3";
+                v.forEach(m => {
+                    const card = createCard(m, m, 'apple');
+                    grid.appendChild(card);
+                });
+                s.appendChild(grid);
+                c.appendChild(s);
+            }); 
+        }
+        
+        function renderOppoList() { 
+            const c = document.getElementById('oppoList'); 
+            c.innerHTML = '';
+            Object.entries(oppoData).forEach(([k,v]) => { 
+                const s = document.createElement('div');
+                s.innerHTML = `<h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 pl-1">${k}</h4>`;
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-2 sm:grid-cols-3 gap-3";
+                v.forEach(m => {
+                    const card = createCard(m, m, 'oppo');
+                    grid.appendChild(card);
+                });
+                s.appendChild(grid);
+                c.appendChild(s); 
+            }); 
+        }
+
+        function createCard(name, code, brand) {
+            const d = document.createElement('div');
+            let color = brand==='xiaomi'?'orange':(brand==='apple'?'blue':'[#107B41]');
+            let hoverColor = brand==='xiaomi'?'orange-600':(brand==='apple'?'blue-600':(brand==='oppo'?'[#107B41]':'purple-600'));
+            let darkHover = brand==='xiaomi'?'orange-400':(brand==='apple'?'blue-400':(brand==='oppo'?'[#22c55e]':'purple-400'));
+            
+            d.className = `model-card bg-gray-50 dark:bg-zinc-800 p-3 rounded-xl cursor-pointer hover:shadow-md border border-gray-100 dark:border-zinc-700 flex items-center justify-between group`;
+            d.innerHTML = `
+                <div class="overflow-hidden"><div class="font-bold text-gray-700 dark:text-gray-200 text-sm group-hover:text-${hoverColor} dark:group-hover:text-${darkHover} truncate transition-colors">${name}</div><div class="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">${code}</div></div>
+                <div class="select-indicator w-4 h-4 rounded-full border border-gray-300 dark:border-zinc-600 flex items-center justify-center shrink-0 transition-colors"><div class="w-2 h-2 rounded-full bg-white transform scale-0 transition-transform"></div></div>
+            `;
+            d.onclick = () => selectModel(d, code, brand);
+            return d;
+        }
+
+        // --- Init ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            renderXiaomiCards('series17', 'xiaomi17Container');
+            renderXiaomiCards('series15', 'xiaomi15Container');
+            renderXiaomiCards('series14', 'xiaomi14Container');
+            renderAppleList();
+            renderOppoList();
+
+            const uploadZone = document.getElementById('uploadZone');
+            uploadZone.addEventListener('click', () => document.getElementById('fileInput').click());
+            ['dragover', 'dragleave', 'drop'].forEach(evt => {
+                uploadZone.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    if (evt === 'dragover') uploadZone.classList.add('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900/10');
+                    else uploadZone.classList.remove('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900/10');
+                    if (evt === 'drop' && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+                });
+            });
+            document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+            document.getElementById('downloadBtn').addEventListener('click', processAndDownload);
+            document.getElementById('customMakeInput').addEventListener('input', checkCustomInputs);
+            document.getElementById('customModelInput').addEventListener('input', checkCustomInputs);
+        });
+
+        // --- Date Picker Logic ---
+        function syncDateFromPicker() {
+            const picker = document.getElementById('hiddenDatePicker');
+            const input = document.getElementById('inputDate');
+            if (picker.value) {
+                // picker value: 2023-10-25T14:30
+                // target: 2023:10:25 14:30:00
+                const parts = picker.value.split('T');
+                const datePart = parts[0].replace(/-/g, ':');
+                const timePart = parts[1] + ":00";
+                input.value = `${datePart} ${timePart}`;
+            }
+        }
+
+        // --- Map Logic ---
+        function openMapModal() {
+            const modal = document.getElementById('mapModal');
+            modal.classList.remove('hidden');
+            
+            if (!mapInstance) {
+                mapInstance = L.map('leafletMap').setView([39.9042, 116.4074], 10); // Default Beijing
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(mapInstance);
+
+                mapInstance.on('click', function(e) {
+                    updateMapMarker(e.latlng.lat, e.latlng.lng);
+                });
+            }
+            
+            // Try to set view from current input
+            const currentGPS = document.getElementById('inputGPS').value;
+            if (currentGPS && currentGPS.includes(',')) {
+                const [lat, lng] = currentGPS.split(',').map(s => parseFloat(s.trim()));
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    updateMapMarker(lat, lng);
+                    mapInstance.setView([lat, lng], 13);
+                }
+            }
+            
+            setTimeout(() => mapInstance.invalidateSize(), 100);
+        }
+
+        function closeMapModal() {
+            document.getElementById('mapModal').classList.add('hidden');
+        }
+
+        function updateMapMarker(lat, lng) {
+            if (mapMarker) {
+                mapMarker.setLatLng([lat, lng]);
+            } else {
+                mapMarker = L.marker([lat, lng], {draggable: true}).addTo(mapInstance);
+                mapMarker.on('dragend', function(event) {
+                    const marker = event.target;
+                    const position = marker.getLatLng();
+                    selectedLat = position.lat;
+                    selectedLng = position.lng;
+                });
+            }
+            selectedLat = lat;
+            selectedLng = lng;
+        }
+
+        function confirmMapLocation() {
+            if (selectedLat != null && selectedLng != null) {
+                document.getElementById('inputGPS').value = `${selectedLat.toFixed(6)}, ${selectedLng.toFixed(6)}`;
+            }
+            closeMapModal();
+        }
+
+        // --- Randomization ---
+        function randomizeExif() {
+            if (!currentExifObj) { showToast("请先上传照片", true); return; }
+            const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+            const apertures = [1.4, 1.8, 2.0, 2.8, 4.0, 5.6, 8.0, 11.0];
+            const shutters = ["1/50", "1/60", "1/100", "1/125", "1/250", "1/500", "1/1000", "1/2000", "1/4000"]; 
+            const isos = [100, 200, 400, 800, 1600, 3200];
+            const focals = [24, 28, 35, 50, 85, 105, 135];
+
+            document.getElementById('inputAperture').value = "f/" + rand(apertures).toFixed(1);
+            document.getElementById('inputShutter').value = rand(shutters) + "s";
+            document.getElementById('inputISO').value = rand(isos);
+            document.getElementById('inputFocal').value = rand(focals) + "mm";
+
+            const now = new Date();
+            const pad = (n) => n.toString().padStart(2, '0');
+            const randTime = new Date(now.getTime() - Math.floor(Math.random() * 86400000));
+            document.getElementById('inputDate').value = `${randTime.getFullYear()}:${pad(randTime.getMonth()+1)}:${pad(randTime.getDate())} ${pad(randTime.getHours())}:${pad(randTime.getMinutes())}:${pad(randTime.getSeconds())}`;
+            
+            showToast("已填入随机参数");
+        }
+
+        // --- File Handling ---
+        function handleFile(file) {
+            originalImageBuffer = null;
+            currentExifObj = null;
+            document.getElementById('downloadBtn').disabled = true;
+            document.getElementById('metaPanel').classList.add('hidden');
+
+            const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === "image/heic";
+            const isPng = file.type === "image/png" || file.name.toLowerCase().endsWith('.png');
+            const isJpg = file.type.includes("jpeg") || file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg');
+
+            if (!isJpg && !isHeic && !isPng) return showToast("请上传 JPG, PNG 或 HEIC 格式", true);
+            originalFileName = file.name.replace(/\.[^/.]+$/, "");
+            
+            if (isHeic) processHeic(file);
+            else if (isPng) processPng(file);
+            else processJpg(file);
+        }
+
+        // Helpers
+        function toRational(num) {
+            if (num === undefined || num === null) return undefined;
+            const m = 10000;
+            const n = Math.round(num * m);
+            return [n, m];
+        }
+        function degToDmsRational(deg) {
+            const d = Math.floor(Math.abs(deg));
+            const minFloat = (Math.abs(deg) - d) * 60;
+            const m = Math.floor(minFloat);
+            const s = Math.round((minFloat - m) * 60 * 100); 
+            return [[d, 1], [m, 1], [s, 100]];
+        }
+        function arrayBufferToString(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+            return binary;
+        }
+
+        function processHeic(file) {
+            const loader = document.getElementById('heicLoader');
+            loader.querySelector('p').innerText = "正在读取 EXIF 并转换...";
+            loader.classList.remove('hidden');
+            document.getElementById('placeholderState').classList.add('hidden');
+
+            exifr.parse(file).then(metadata => {
+                return heic2any({ blob: file, toType: "image/jpeg", quality: 0.95 }).then((blob) => { return { blob, metadata }; });
+            }).then(({ blob, metadata }) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const jpgBuffer = e.target.result; 
+                    reconstructExif(jpgBuffer, metadata);
+                    finalizeImageLoad();
+                    loader.classList.add('hidden');
+                    showToast("已转换 HEIC (保留基础参数)");
+                };
+                reader.readAsArrayBuffer(blob);
+            }).catch((e) => {
+                console.error(e);
+                loader.classList.add('hidden');
+                document.getElementById('placeholderState').classList.remove('hidden');
+                showToast("HEIC 处理失败", true);
+            });
+        }
+
+        function processPng(file) {
+            const loader = document.getElementById('heicLoader');
+            loader.querySelector('p').innerText = "正在转换 PNG 为 JPG...";
+            loader.classList.remove('hidden');
+            document.getElementById('placeholderState').classList.add('hidden');
+
+            Promise.all([
+                exifr.parse(file).catch(() => null),
+                new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0);
+                        canvas.toBlob(resolve, 'image/jpeg', 0.95);
+                    };
+                    img.src = URL.createObjectURL(file);
+                })
+            ]).then(([metadata, jpgBlob]) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const jpgBuffer = e.target.result;
+                    reconstructExif(jpgBuffer, metadata);
+                    finalizeImageLoad();
+                    loader.classList.add('hidden');
+                    showToast("PNG 已转换为 JPG");
+                };
+                reader.readAsArrayBuffer(jpgBlob);
+            }).catch(e => {
+                console.error(e);
+                loader.classList.add('hidden');
+                document.getElementById('placeholderState').classList.remove('hidden');
+                showToast("PNG 处理失败", true);
+            });
+        }
+
+        function reconstructExif(jpgBuffer, metadata) {
+            const exifObj = { "0th": {}, "Exif": {}, "GPS": {} };
+            if (metadata) {
+                if (metadata.FNumber) exifObj["Exif"][piexif.ExifIFD.FNumber] = toRational(metadata.FNumber);
+                if (metadata.ExposureTime) exifObj["Exif"][piexif.ExifIFD.ExposureTime] = toRational(metadata.ExposureTime);
+                if (metadata.ISO) exifObj["Exif"][piexif.ExifIFD.ISOSpeedRatings] = metadata.ISO;
+                if (metadata.FocalLength) exifObj["Exif"][piexif.ExifIFD.FocalLength] = toRational(metadata.FocalLength);
+                if (metadata.FocalLengthIn35mmFormat) exifObj["Exif"][piexif.ExifIFD.FocalLengthIn35mmFilm] = metadata.FocalLengthIn35mmFormat;
+                
+                if (metadata.DateTimeOriginal) {
+                        const d = new Date(metadata.DateTimeOriginal);
+                        const pad = (n) => n.toString().padStart(2, '0');
+                        const dateStr = `${d.getFullYear()}:${pad(d.getMonth()+1)}:${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                        exifObj["0th"][piexif.ImageIFD.DateTime] = dateStr;
+                        exifObj["Exif"][piexif.ExifIFD.DateTimeOriginal] = dateStr;
+                        exifObj["Exif"][piexif.ExifIFD.DateTimeDigitized] = dateStr;
+                }
+                if (metadata.latitude) {
+                    exifObj["GPS"][piexif.GPSIFD.GPSLatitudeRef] = metadata.latitude >= 0 ? "N" : "S";
+                    exifObj["GPS"][piexif.GPSIFD.GPSLatitude] = degToDmsRational(metadata.latitude);
+                }
+                if (metadata.longitude) {
+                    exifObj["GPS"][piexif.GPSIFD.GPSLongitudeRef] = metadata.longitude >= 0 ? "E" : "W";
+                    exifObj["GPS"][piexif.GPSIFD.GPSLongitude] = degToDmsRational(metadata.longitude);
+                }
+                if (metadata.altitude) {
+                        exifObj["GPS"][piexif.GPSIFD.GPSAltitudeRef] = metadata.altitude >= 0 ? 0 : 1;
+                        exifObj["GPS"][piexif.GPSIFD.GPSAltitude] = toRational(Math.abs(metadata.altitude));
+                }
+                if (metadata.Make) exifObj["0th"][piexif.ImageIFD.Make] = metadata.Make;
+                if (metadata.Model) exifObj["0th"][piexif.ImageIFD.Model] = metadata.Model;
+            }
+
+            try {
+                const exifStr = piexif.dump(exifObj);
+                const jpgBinary = arrayBufferToString(jpgBuffer);
+                const newJpgStr = piexif.insert(exifStr, jpgBinary);
+                const len = newJpgStr.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) bytes[i] = newJpgStr.charCodeAt(i);
+                originalImageBuffer = bytes.buffer;
+            } catch (err) {
+                console.error("EXIF Reconstruction failed", err);
+                originalImageBuffer = jpgBuffer;
+            }
+        }
+
+        function processJpg(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                originalImageBuffer = e.target.result; // ArrayBuffer
+                finalizeImageLoad();
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function finalizeImageLoad() {
+            // Create Blob URL for preview
+            const blob = new Blob([originalImageBuffer], { type: "image/jpeg" });
+            const url = URL.createObjectURL(blob);
+            const img = document.getElementById('imagePreview');
+            img.src = url;
+            
+            img.classList.remove('hidden');
+            document.getElementById('placeholderState').classList.add('hidden');
+            document.getElementById('changeOverlay').classList.remove('hidden');
+            
+            document.getElementById('selectionContainer').classList.remove('opacity-50', 'pointer-events-none');
+            
+            // Load EXIF
+            try {
+                const binStr = arrayBufferToString(originalImageBuffer);
+                currentExifObj = piexif.load(binStr);
+            } catch (e) {
+                console.log("No EXIF found", e);
+                currentExifObj = { "0th": {}, "Exif": {}, "GPS": {} };
+            }
+
+            displayMetadata();
+            setTimeout(() => document.getElementById('selectionContainer').scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+            
+            if (selectedBrand !== 'Custom' && selectedModelCode) document.getElementById('downloadBtn').disabled = false;
+            else if (selectedBrand === 'Custom') checkCustomInputs();
+        }
+
+        function displayMetadata() {
+            const metaPanel = document.getElementById('metaPanel');
+            metaPanel.classList.remove('hidden');
+            const exif = currentExifObj["Exif"] || {};
+            const zeroth = currentExifObj["0th"] || {};
+            const gps = currentExifObj["GPS"] || {};
+
+            const getRat = (tag) => {
+                const val = exif[tag];
+                if (!val) return null;
+                if (Array.isArray(val) && val.length === 2 && val[1] !== 0) return (val[0] / val[1]);
+                return parseFloat(val);
+            };
+
+            const model = zeroth[piexif.ImageIFD.Model] || "未知设备";
+            document.getElementById('metaModel').innerText = model.replace(/\0/g, ''); 
+            
+            // F-Number
+            const f = getRat(piexif.ExifIFD.FNumber);
+            document.getElementById('inputAperture').value = f ? `f/${f.toFixed(1)}` : "";
+
+            // Shutter
+            let shutter = "";
+            const et = exif[piexif.ExifIFD.ExposureTime];
+            if (et && Array.isArray(et)) {
+                if(et[0] === 1 && et[1] > 1) shutter = `1/${et[1]}s`;
+                else shutter = (et[0]/et[1]).toFixed(4) + 's';
+            }
+            document.getElementById('inputShutter').value = shutter;
+
+            // ISO
+            let iso = exif[piexif.ExifIFD.ISOSpeedRatings];
+            if (Array.isArray(iso)) iso = iso[0];
+            document.getElementById('inputISO').value = iso || "";
+
+            // Focal
+            const fl = getRat(piexif.ExifIFD.FocalLength);
+            document.getElementById('inputFocal').value = fl ? `${Math.round(fl)}mm` : "";
+
+            // Date
+            const date = exif[piexif.ExifIFD.DateTimeOriginal] || zeroth[piexif.ImageIFD.DateTime];
+            document.getElementById('inputDate').value = date || "";
+
+            // GPS
+            let gpsText = "";
+            const dmsToDeg = (dms) => (dms && dms.length>=3) ? dms[0][0]/dms[0][1] + (dms[1][0]/dms[1][1])/60 + (dms[2][0]/dms[2][1])/3600 : null;
+            if (gps[piexif.GPSIFD.GPSLatitude] && gps[piexif.GPSIFD.GPSLongitude]) {
+                 const lat = dmsToDeg(gps[piexif.GPSIFD.GPSLatitude]);
+                 const long = dmsToDeg(gps[piexif.GPSIFD.GPSLongitude]);
+                 if(lat && long) gpsText = `${lat.toFixed(6)}, ${long.toFixed(6)}`;
+            }
+            document.getElementById('inputGPS').value = gpsText;
+        }
+
+        function getExifFromInputs() {
+            const val = (id) => document.getElementById(id).value.trim();
+            const clean = (id) => document.getElementById(id).value.replace(/[^\d./,:\s-]/g, '').trim();
+
+            if (!currentExifObj["0th"]) currentExifObj["0th"] = {};
+            if (!currentExifObj["Exif"]) currentExifObj["Exif"] = {};
+            
+            // F-Number
+            const fStr = val('inputAperture').replace(/[^\d.]/g, '');
+            if (fStr) currentExifObj["Exif"][piexif.ExifIFD.FNumber] = toRational(parseFloat(fStr));
+
+            // Shutter
+            let sStr = val('inputShutter').toLowerCase().replace('s', '');
+            if (sStr.includes('/')) {
+                const parts = sStr.split('/');
+                if (parts.length===2) currentExifObj["Exif"][piexif.ExifIFD.ExposureTime] = [parseInt(parts[0]), parseInt(parts[1])];
+            } else if (sStr && !isNaN(sStr)) {
+                const floatVal = parseFloat(sStr);
+                if (floatVal < 1) currentExifObj["Exif"][piexif.ExifIFD.ExposureTime] = toRational(floatVal);
+                else currentExifObj["Exif"][piexif.ExifIFD.ExposureTime] = toRational(floatVal);
+            }
+
+            // ISO
+            const iso = parseInt(clean('inputISO'));
+            if (!isNaN(iso)) currentExifObj["Exif"][piexif.ExifIFD.ISOSpeedRatings] = iso;
+
+            // Focal
+            const fl = parseFloat(val('inputFocal').replace(/[^\d.]/g, ''));
+            if (!isNaN(fl)) {
+                currentExifObj["Exif"][piexif.ExifIFD.FocalLength] = toRational(fl);
+                currentExifObj["Exif"][piexif.ExifIFD.FocalLengthIn35mmFilm] = Math.round(fl);
+            }
+
+            // Date
+            const date = val('inputDate');
+            if (date) {
+                currentExifObj["0th"][piexif.ImageIFD.DateTime] = date;
+                currentExifObj["Exif"][piexif.ExifIFD.DateTimeOriginal] = date;
+                currentExifObj["Exif"][piexif.ExifIFD.DateTimeDigitized] = date;
+            }
+
+            // GPS
+            const gpsStr = val('inputGPS');
+            if (!currentExifObj["GPS"]) currentExifObj["GPS"] = {};
+            if (gpsStr.includes(',')) {
+                const parts = gpsStr.split(',').map(s => parseFloat(s.trim()));
+                if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    const lat = parts[0];
+                    const long = parts[1];
+                    currentExifObj["GPS"][piexif.GPSIFD.GPSLatitudeRef] = lat >= 0 ? "N" : "S";
+                    currentExifObj["GPS"][piexif.GPSIFD.GPSLatitude] = degToDmsRational(lat);
+                    currentExifObj["GPS"][piexif.GPSIFD.GPSLongitudeRef] = long >= 0 ? "E" : "W";
+                    currentExifObj["GPS"][piexif.GPSIFD.GPSLongitude] = degToDmsRational(long);
+                }
+            }
+        }
+
+        // --- Safe Binary Splicer ---
+        function spliceExif(jpegBuffer, exifDataStr) {
+            const jpegData = new Uint8Array(jpegBuffer);
+            const exifLen = exifDataStr.length;
+            const segmentLen = exifLen + 2;
+            const app1 = new Uint8Array(segmentLen + 2);
+            app1[0] = 0xFF; app1[1] = 0xE1;
+            app1[2] = (segmentLen >> 8) & 0xFF; app1[3] = segmentLen & 0xFF;
+            for(let i=0; i<exifLen; i++) app1[i+4] = exifDataStr.charCodeAt(i);
+
+            if (jpegData[0] !== 0xFF || jpegData[1] !== 0xD8) throw new Error("Invalid JPEG");
+            let offset = 2;
+            let existingStart = -1, existingEnd = -1;
+
+            while (offset < jpegData.length - 1) {
+                if (jpegData[offset] !== 0xFF) break;
+                const marker = jpegData[offset + 1];
+                if (marker === 0xDA) break; 
+                if (marker === 0xE1) {
+                    if (jpegData[offset+4] === 0x45 && jpegData[offset+5] === 0x78) {
+                        existingStart = offset;
+                        const len = (jpegData[offset+2] << 8) | jpegData[offset+3];
+                        existingEnd = offset + 2 + len;
+                        break;
+                    }
+                }
+                const len = (jpegData[offset+2] << 8) | jpegData[offset+3];
+                offset += 2 + len;
+            }
+
+            if (existingStart !== -1) {
+                const pre = jpegData.subarray(0, existingStart);
+                const post = jpegData.subarray(existingEnd);
+                const res = new Uint8Array(pre.length + app1.length + post.length);
+                res.set(pre, 0); res.set(app1, pre.length); res.set(post, pre.length + app1.length);
+                return res;
+            } else {
+                const pre = jpegData.subarray(0, 2);
+                const post = jpegData.subarray(2);
+                const res = new Uint8Array(pre.length + app1.length + post.length);
+                res.set(pre, 0); res.set(app1, 2); res.set(post, 2 + app1.length);
+                return res;
+            }
+        }
+
+        function processAndDownload() {
+            if (!originalImageBuffer) return showToast("请先上传照片", true);
+            let finalMake, finalModel;
+            if (selectedBrand === 'Custom') {
+                finalMake = document.getElementById('customMakeInput').value.trim();
+                finalModel = document.getElementById('customModelInput').value.trim();
+                if (!finalMake || !finalModel) return showToast("请输入厂商和机型", true);
+            } else {
+                if (!selectedModelCode) return showToast("请先选择机型", true);
+                finalMake = selectedBrand;
+                finalModel = selectedModelCode;
+            }
+
+            const btn = document.getElementById('downloadBtn');
+            const loader = document.getElementById('processingLoader');
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+
+            const preserveHdr = document.getElementById('hdrToggle').checked;
+
+            setTimeout(() => {
+                try {
+                    getExifFromInputs();
+                    
+                    currentExifObj["0th"][piexif.ImageIFD.Make] = finalMake;
+                    currentExifObj["0th"][piexif.ImageIFD.Model] = finalModel;
+
+                    const exifStr = piexif.dump(currentExifObj);
+                    let finalBuffer;
+
+                    if (preserveHdr) {
+                        finalBuffer = spliceExif(originalImageBuffer, exifStr);
+                    } else {
+                        const binStr = arrayBufferToString(originalImageBuffer);
+                        const newJpgStr = piexif.insert(exifStr, binStr);
+                        const len = newJpgStr.length;
+                        finalBuffer = new Uint8Array(len);
+                        for(let i=0; i<len; i++) finalBuffer[i] = newJpgStr.charCodeAt(i);
+                    }
+
+                    const blob = new Blob([finalBuffer], { type: "image/jpeg" });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    const safeModelName = finalModel.replace(/[^a-zA-Z0-9]/g, '_');
+                    link.download = `${originalFileName}_${safeModelName}.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    showToast("伪装成功！已开始下载");
+                } catch (e) {
+                    console.error(e);
+                    showToast("生成失败，请关闭 HDR 选项重试", true);
+                } finally {
+                    btn.disabled = false;
+                    loader.classList.add('hidden');
+                }
+            }, 500);
+        }
+
+        // --- UI Rendering ---
+        function renderXiaomiCards(k, id) { 
+            const c = document.getElementById(id); 
+            xiaomiData[k].forEach(d => {
+                const card = createCard(d.name, d.code, 'xiaomi');
+                c.appendChild(card);
+            }); 
+        }
+        
+        function renderAppleList() { 
+            const c = document.getElementById('appleList'); 
+            c.innerHTML = '';
+            Object.entries(appleData).forEach(([k,v]) => { 
+                const s = document.createElement('div');
+                s.innerHTML = `<h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 pl-1">${k}</h4>`;
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-2 sm:grid-cols-3 gap-3";
+                v.forEach(m => {
+                    const card = createCard(m, m, 'apple');
+                    grid.appendChild(card);
+                });
+                s.appendChild(grid);
+                c.appendChild(s);
+            }); 
+        }
+        
+        function renderOppoList() { 
+            const c = document.getElementById('oppoList'); 
+            c.innerHTML = '';
+            Object.entries(oppoData).forEach(([k,v]) => { 
+                const s = document.createElement('div');
+                s.innerHTML = `<h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 pl-1">${k}</h4>`;
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-2 sm:grid-cols-3 gap-3";
+                v.forEach(m => {
+                    const card = createCard(m, m, 'oppo');
+                    grid.appendChild(card);
+                });
+                s.appendChild(grid);
+                c.appendChild(s); 
+            }); 
+        }
+
+        function createCard(name, code, brand) {
+            const d = document.createElement('div');
+            let color = brand==='xiaomi'?'orange':(brand==='apple'?'blue':'[#107B41]');
+            let hoverColor = brand==='xiaomi'?'orange-600':(brand==='apple'?'blue-600':(brand==='oppo'?'[#107B41]':'purple-600'));
+            let darkHover = brand==='xiaomi'?'orange-400':(brand==='apple'?'blue-400':(brand==='oppo'?'[#22c55e]':'purple-400'));
+            
+            d.className = `model-card bg-gray-50 dark:bg-zinc-800 p-3 rounded-xl cursor-pointer hover:shadow-md border border-gray-100 dark:border-zinc-700 flex items-center justify-between group`;
+            d.innerHTML = `
+                <div class="overflow-hidden"><div class="font-bold text-gray-700 dark:text-gray-200 text-sm group-hover:text-${hoverColor} dark:group-hover:text-${darkHover} truncate transition-colors">${name}</div><div class="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">${code}</div></div>
+                <div class="select-indicator w-4 h-4 rounded-full border border-gray-300 dark:border-zinc-600 flex items-center justify-center shrink-0 transition-colors"><div class="w-2 h-2 rounded-full bg-white transform scale-0 transition-transform"></div></div>
+            `;
+            d.onclick = () => selectModel(d, code, brand);
+            return d;
+        }
+
+        function selectModel(card, code, brand) {
+            document.querySelectorAll('.model-card').forEach(c => {
+                c.classList.remove('selected-xiaomi', 'selected-apple', 'selected-oppo');
+                c.querySelector('.select-indicator').classList.remove('bg-orange-500', 'bg-blue-600', 'bg-[#107B41]', 'border-orange-500', 'border-blue-600', 'border-[#107B41]');
+                c.querySelector('.select-indicator').classList.add('border-gray-300', 'dark:border-zinc-600');
+                c.querySelector('.select-indicator div').classList.add('scale-0');
+            });
+            if (brand === 'xiaomi') { card.classList.add('selected-xiaomi'); card.querySelector('.select-indicator').classList.add('bg-orange-500', 'border-orange-500'); }
+            else if (brand === 'apple') { card.classList.add('selected-apple'); card.querySelector('.select-indicator').classList.add('bg-blue-600', 'border-blue-600'); }
+            else if (brand === 'oppo') { card.classList.add('selected-oppo'); card.querySelector('.select-indicator').classList.add('bg-[#107B41]', 'border-[#107B41]'); }
+            
+            card.querySelector('.select-indicator div').classList.remove('scale-0');
+            selectedModelCode = code;
+            if (originalImageBuffer) document.getElementById('downloadBtn').disabled = false;
+        }
+
+        let toastTimeout;
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const msgSpan = document.getElementById('toastMsg');
+            const icon = toast.querySelector('svg');
+            msgSpan.innerText = message;
+            const colors = { success: ['text-green-400', 'dark:text-green-600'], error: ['text-red-400', 'dark:text-red-500'] };
+            icon.classList.remove(...colors.success, ...colors.error);
+            icon.classList.add(...(isError ? colors.error : colors.success));
+            icon.setAttribute('data-lucide', isError ? 'alert-circle' : 'check-circle-2');
+            lucide.createIcons();
+            toast.classList.remove('translate-y-32', 'opacity-0');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toast.classList.add('translate-y-32', 'opacity-0'), 3000);
+        }
+    </script>
+</body>
+</html>
